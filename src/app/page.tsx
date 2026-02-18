@@ -30,6 +30,7 @@ export default function HomePage() {
     if(data) setLocations(data);
   }
 
+  // ==================== Login ====================
   const handleLogin = async () => {
     const { data, error } = await supabase.from('employees')
       .select('*').eq('employee_code', employeeCode).single();
@@ -39,6 +40,7 @@ export default function HomePage() {
     setUser(data);
   }
 
+  // ==================== Utils ====================
   const getDistance = (lat1:number, lon1:number, lat2:number, lon2:number) => {
     const R = 6371e3;
     const φ1 = lat1*Math.PI/180;
@@ -105,15 +107,24 @@ export default function HomePage() {
 
   const addEmployee = async () => {
     if(!newName || !newCode || !newPassword) return alert('املأ جميع الحقول');
-    const { error } = await supabase.from('employees').insert({
+    
+    const { error, data } = await supabase.from('employees').insert([{
       name: newName,
       employee_code: newCode,
       password: newPassword,
       role: 'employee'
-    });
-    if(error) return alert(error.message);
-    fetchEmployees();
-    setNewName(''); setNewCode(''); setNewPassword('');
+    }]).select();
+
+    if(error) return alert('حدث خطأ: ' + error.message);
+
+    alert('تم إضافة الموظف بنجاح!');
+    
+    // تحديث قائمة الموظفين مباشرة
+    if(data) setEmployees(prev => [...prev, ...data]);
+
+    setNewName('');
+    setNewCode('');
+    setNewPassword('');
   }
 
   const fetchAttendance = async () => {
