@@ -1,24 +1,46 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+
+interface Employee {
+  id: string;
+  name: string;
+  employee_code: string;
+  role: string;
+}
+
+interface Location {
+  id: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  allowed_radius: number;
+}
+
+interface Attendance {
+  id: string;
+  date: string;
+  check_in: string | null;
+  check_out: string | null;
+  employees: { name: string; employee_code: string };
+  locations: { name: string };
+}
 
 export default function HomePage() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<Employee | null>(null);
   const [employeeCode, setEmployeeCode] = useState('');
   const [password, setPassword] = useState('');
-  const [locations, setLocations] = useState<any[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
   const [selectedLocation, setSelectedLocation] = useState('');
 
   // Admin states
-  const [employees, setEmployees] = useState<any[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [newName,setNewName] = useState('');
   const [newCode,setNewCode] = useState('');
   const [newPassword,setNewPassword] = useState('');
-  const [attendanceList, setAttendanceList] = useState<any[]>([]);
+  const [attendanceList, setAttendanceList] = useState<Attendance[]>([]);
   const [startDate,setStartDate] = useState('');
   const [endDate,setEndDate] = useState('');
 
-  // ==================== Load initial data ====================
   useEffect(() => {
     const u = localStorage.getItem('user');
     if(u) setUser(JSON.parse(u));
@@ -27,18 +49,27 @@ export default function HomePage() {
   }, [user]);
 
   const fetchLocations = async () => {
-    const { data } = await supabase.from('locations').select('*');
-    if(data) setLocations(data);
+    try {
+      const res = await fetch('/api/getLocations');
+      const data = await res.json();
+      setLocations(data);
+    } catch(err) { console.log(err); }
   }
 
   // ==================== Login ====================
   const handleLogin = async () => {
-    const { data, error } = await supabase.from('employees')
-      .select('*').eq('employee_code', employeeCode).single();
-    if(error || !data) return alert('كود الموظف غير موجود');
-    if(password !== data.password) return alert('كلمة السر خاطئة');
-    localStorage.setItem('user', JSON.stringify(data));
-    setUser(data);
+    try {
+      const res = await fetch('/api/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ employee_code: employeeCode, password })
+      });
+      const data = await res.json();
+      if(res.ok){
+        localStorage.setItem('user', JSON.stringify(data));
+        setUser(data);
+      } else alert(data.error);
+    } catch(err:any){ alert(err.message); }
   }
 
   // ==================== Utils ====================
@@ -49,98 +80,70 @@ export default function HomePage() {
     const Δφ = (lat2-lat1)*Math.PI/180;
     const Δλ = (lon2-lon1)*Math.PI/180;
     const a = Math.sin(Δφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(Δλ/2)**2;
-    return 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a))*R;
+    const c = 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R*c;
   }
 
   // ==================== Employee ====================
-  const handleCheckIn = async () => {
+  const handleCheck = async (type:'checkin'|'checkout') => {
     if(!selectedLocation) return alert('اختر الموقع');
     if(!navigator.geolocation) return alert('لا يمكن تحديد موقعك');
 
     navigator.geolocation.getCurrentPosition(async pos=>{
       const loc = locations.find(l=>l.id===selectedLocation);
       if(!loc) return alert('الموقع غير موجود');
-
-      const distance = getDistance(pos.coords.latitude, pos.coords.longitude, loc.latitude, loc.longitude);
+      const distance = getDistance(pos.coords.latitude,pos.coords.longitude,loc.latitude,loc.longitude);
       if(distance > loc.allowed_radius) return alert('أنت خارج النطاق المسموح به');
 
-      const today = new Date().toISOString().split('T')[0];
-
-      const { error } = await supabase.from('attendance').upsert([{
-        employee_id: user.id,
-        date: today,
-        check_in: new Date(),
-        location_id: loc.id
-      }], { onConflict: 'employee_id,date' });
-
-      if(error) return alert('حدث خطأ أثناء تسجيل الحضور: '+error.message);
-      alert('تم تسجيل الحضور بنجاح');
-    });
-  }
-
-  const handleCheckOut = async () => {
-    if(!selectedLocation) return alert('اختر الموقع');
-    if(!navigator.geolocation) return alert('لا يمكن تحديد موقعك');
-
-    navigator.geolocation.getCurrentPosition(async pos=>{
-      const loc = locations.find(l=>l.id===selectedLocation);
-      if(!loc) return alert('الموقع غير موجود');
-
-      const distance = getDistance(pos.coords.latitude, pos.coords.longitude, loc.latitude, loc.longitude);
-      if(distance > loc.allowed_radius) return alert('أنت خارج النطاق المسموح به');
-
-      const today = new Date().toISOString().split('T')[0];
-
-      const { error } = await supabase.from('attendance').update({
-        check_out: new Date()
-      }).eq('employee_id', user.id).eq('date', today);
-
-      if(error) return alert('حدث خطأ أثناء تسجيل الانصراف: '+error.message);
-      alert('تم تسجيل الانصراف بنجاح');
+      try{
+        const res = await fetch('/api/checkInOut',{
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ employee_id: user?.id, type, location_id: loc.id })
+        });
+        const result = await res.json();
+        if(res.ok) alert(type==='checkin'?'تم تسجيل الحضور بنجاح':'تم تسجيل الانصراف بنجاح');
+        else alert('حدث خطأ: '+result.error);
+      } catch(err:any){ alert('حدث خطأ غير متوقع: '+err.message); }
     });
   }
 
   // ==================== Admin ====================
   const fetchEmployees = async () => {
-    const { data } = await supabase.from('employees').select('*');
-    if(data) setEmployees(data);
+    try{
+      const res = await fetch('/api/getEmployees');
+      const data = await res.json();
+      setEmployees(data);
+    } catch(err){ console.log(err); }
   }
 
   const addEmployee = async () => {
-    if(!newName || !newCode || !newPassword) return alert('املأ جميع الحقول');
-
-    try {
-      const { data, error } = await supabase.from('employees').insert([{
-        name: newName,
-        employee_code: newCode,
-        password: newPassword,
-        role: 'employee'
-      }]).select();
-
-      if(error) return alert('حدث خطأ: ' + error.message);
-      if(data && data.length>0) {
-        setEmployees(prev => [...prev, ...data]);
+    if(!newName||!newCode||!newPassword) return alert('املأ جميع الحقول');
+    try{
+      const res = await fetch('/api/addEmployee',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ name:newName, employee_code:newCode, password:newPassword })
+      });
+      const result = await res.json();
+      if(res.ok){
         alert('تم إضافة الموظف بنجاح!');
-      }
-
-      setNewName('');
-      setNewCode('');
-      setNewPassword('');
-    } catch(err:any) {
-      alert('حدث خطأ غير متوقع: '+err.message);
-    }
+        if(result.data) setEmployees(prev=>[...prev,...result.data]);
+        setNewName(''); setNewCode(''); setNewPassword('');
+      } else alert('حدث خطأ: '+result.error);
+    } catch(err:any){ alert('حدث خطأ غير متوقع: '+err.message); }
   }
 
   const fetchAttendance = async () => {
-    if(!startDate || !endDate) return alert('اختر التاريخين');
-    const { data } = await supabase.from('attendance')
-      .select(`*, employees(name,employee_code), locations(name)`)
-      .gte('date', startDate)
-      .lte('date', endDate);
-    if(data) setAttendanceList(data);
+    if(!startDate||!endDate) return alert('اختر التاريخين');
+    try{
+      const res = await fetch(`/api/getAttendance?start=${startDate}&end=${endDate}`);
+      const data = await res.json();
+      setAttendanceList(data);
+    } catch(err){ console.log(err); }
   }
 
-  // ==================== Conditional Rendering ====================
+  // ==================== Rendering ====================
   if(!user) return (
     <div className="p-4">
       <h1 className="text-2xl mb-4">تسجيل الدخول</h1>
@@ -183,7 +186,7 @@ export default function HomePage() {
     </div>
   );
 
-  // ==================== Employee ====================
+  // Employee
   return (
     <div className="p-4">
       <h1 className="text-xl mb-4">لوحة الموظف - أهلا {user.name}</h1>
@@ -191,8 +194,8 @@ export default function HomePage() {
         <option value="">اختر الموقع</option>
         {locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
       </select>
-      <button onClick={handleCheckIn} className="bg-green-500 text-white p-2 m-1 rounded">تسجيل حضور</button>
-      <button onClick={handleCheckOut} className="bg-red-500 text-white p-2 m-1 rounded">تسجيل انصراف</button>
+      <button onClick={()=>handleCheck('checkin')} className="bg-green-500 text-white p-2 m-1 rounded">تسجيل حضور</button>
+      <button onClick={()=>handleCheck('checkout')} className="bg-red-500 text-white p-2 m-1 rounded">تسجيل انصراف</button>
     </div>
   )
 }
