@@ -108,16 +108,18 @@ export default function HomePage() {
   const addEmployee = async () => {
     if(!newName || !newCode || !newPassword) return alert('املأ جميع الحقول');
     
-    const { error, data } = await supabase.from('employees').insert([{
+  const { data, error } = await supabase
+    .from('employees')
+    .insert([{
       name: newName,
       employee_code: newCode,
       password: newPassword,
       role: 'employee'
-    }]).select();
-
-    if(error) return alert('حدث خطأ: ' + error.message);
-
-    alert('تم إضافة الموظف بنجاح!');
+    }])
+    .select(); // لازم نجيب البيانات الجديدة عشان نعرف نجحت ولا لا
+  
+  if(error) return alert('حدث خطأ: ' + error.message);
+  alert('تم إضافة الموظف بنجاح!');
     
     // تحديث قائمة الموظفين مباشرة
     if(data) setEmployees(prev => [...prev, ...data]);
