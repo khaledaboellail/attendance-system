@@ -18,6 +18,7 @@ export default function HomePage() {
   const [startDate,setStartDate] = useState('');
   const [endDate,setEndDate] = useState('');
 
+  // ==================== Load initial data ====================
   useEffect(() => {
     const u = localStorage.getItem('user');
     if(u) setUser(JSON.parse(u));
@@ -72,7 +73,7 @@ export default function HomePage() {
         location_id: loc.id
       }], { onConflict: 'employee_id,date' });
 
-      if(error) return alert('حدث خطأ أثناء تسجيل الحضور');
+      if(error) return alert('حدث خطأ أثناء تسجيل الحضور: '+error.message);
       alert('تم تسجيل الحضور بنجاح');
     });
   }
@@ -94,7 +95,7 @@ export default function HomePage() {
         check_out: new Date()
       }).eq('employee_id', user.id).eq('date', today);
 
-      if(error) return alert('حدث خطأ أثناء تسجيل الانصراف');
+      if(error) return alert('حدث خطأ أثناء تسجيل الانصراف: '+error.message);
       alert('تم تسجيل الانصراف بنجاح');
     });
   }
@@ -107,26 +108,27 @@ export default function HomePage() {
 
   const addEmployee = async () => {
     if(!newName || !newCode || !newPassword) return alert('املأ جميع الحقول');
-    
-  const { data, error } = await supabase
-    .from('employees')
-    .insert([{
-      name: newName,
-      employee_code: newCode,
-      password: newPassword,
-      role: 'employee'
-    }])
-    .select(); // لازم نجيب البيانات الجديدة عشان نعرف نجحت ولا لا
-  
-  if(error) return alert('حدث خطأ: ' + error.message);
-  alert('تم إضافة الموظف بنجاح!');
-    
-    // تحديث قائمة الموظفين مباشرة
-    if(data) setEmployees(prev => [...prev, ...data]);
 
-    setNewName('');
-    setNewCode('');
-    setNewPassword('');
+    try {
+      const { data, error } = await supabase.from('employees').insert([{
+        name: newName,
+        employee_code: newCode,
+        password: newPassword,
+        role: 'employee'
+      }]).select();
+
+      if(error) return alert('حدث خطأ: ' + error.message);
+      if(data && data.length>0) {
+        setEmployees(prev => [...prev, ...data]);
+        alert('تم إضافة الموظف بنجاح!');
+      }
+
+      setNewName('');
+      setNewCode('');
+      setNewPassword('');
+    } catch(err:any) {
+      alert('حدث خطأ غير متوقع: '+err.message);
+    }
   }
 
   const fetchAttendance = async () => {
