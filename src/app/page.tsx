@@ -9,7 +9,7 @@ export default function HomePage() {
   const [locations, setLocations] = useState<any[]>([]);
   const [selectedLocation, setSelectedLocation] = useState('');
 
-  // حالات الأدمن
+  // Admin states
   const [employees, setEmployees] = useState<any[]>([]);
   const [newName,setNewName] = useState('');
   const [newCode,setNewCode] = useState('');
@@ -57,20 +57,43 @@ export default function HomePage() {
     navigator.geolocation.getCurrentPosition(async pos=>{
       const loc = locations.find(l=>l.id===selectedLocation);
       if(!loc) return alert('الموقع غير موجود');
+
       const distance = getDistance(pos.coords.latitude, pos.coords.longitude, loc.latitude, loc.longitude);
       if(distance > loc.allowed_radius) return alert('أنت خارج النطاق المسموح به');
 
       const today = new Date().toISOString().split('T')[0];
 
-      const { error } = await supabase.from('attendance').upsert({
+      const { error } = await supabase.from('attendance').upsert([{
         employee_id: user.id,
         date: today,
         check_in: new Date(),
         location_id: loc.id
-      }, { onConflict: ['employee_id','date'] });
+      }], { onConflict: 'employee_id,date' });
 
       if(error) return alert('حدث خطأ أثناء تسجيل الحضور');
       alert('تم تسجيل الحضور بنجاح');
+    });
+  }
+
+  const handleCheckOut = async () => {
+    if(!selectedLocation) return alert('اختر الموقع');
+    if(!navigator.geolocation) return alert('لا يمكن تحديد موقعك');
+
+    navigator.geolocation.getCurrentPosition(async pos=>{
+      const loc = locations.find(l=>l.id===selectedLocation);
+      if(!loc) return alert('الموقع غير موجود');
+
+      const distance = getDistance(pos.coords.latitude, pos.coords.longitude, loc.latitude, loc.longitude);
+      if(distance > loc.allowed_radius) return alert('أنت خارج النطاق المسموح به');
+
+      const today = new Date().toISOString().split('T')[0];
+
+      const { error } = await supabase.from('attendance').update({
+        check_out: new Date()
+      }).eq('employee_id', user.id).eq('date', today);
+
+      if(error) return alert('حدث خطأ أثناء تسجيل الانصراف');
+      alert('تم تسجيل الانصراف بنجاح');
     });
   }
 
@@ -105,7 +128,7 @@ export default function HomePage() {
   // ==================== Conditional Rendering ====================
   if(!user) return (
     <div className="p-4">
-      <h1>تسجيل الدخول</h1>
+      <h1 className="text-2xl mb-4">تسجيل الدخول</h1>
       <input placeholder="كود الموظف" value={employeeCode} onChange={e=>setEmployeeCode(e.target.value)} className="border p-2 m-1"/>
       <input type="password" placeholder="كلمة السر" value={password} onChange={e=>setPassword(e.target.value)} className="border p-2 m-1"/>
       <button onClick={handleLogin} className="bg-blue-500 text-white p-2 m-1 rounded">دخول</button>
@@ -135,7 +158,10 @@ export default function HomePage() {
       <ul>
         {attendanceList.map(a=>(
           <li key={a.id}>
-            {a.employees.name} ({a.employees.employee_code}) - {a.date} - {a.check_in ? 'حضور: '+new Date(a.check_in).toLocaleTimeString() : ''} {a.check_out ? 'انصراف: '+new Date(a.check_out).toLocaleTimeString() : ''} - {a.locations.name}
+            {a.employees.name} ({a.employees.employee_code}) - {a.date} - 
+            {a.check_in ? ' حضور: '+new Date(a.check_in).toLocaleTimeString() : ''} 
+            {a.check_out ? ' انصراف: '+new Date(a.check_out).toLocaleTimeString() : ''} 
+            - {a.locations.name}
           </li>
         ))}
       </ul>
@@ -145,12 +171,13 @@ export default function HomePage() {
   // ==================== Employee ====================
   return (
     <div className="p-4">
-      <h1>لوحة الموظف - أهلا {user.name}</h1>
+      <h1 className="text-xl mb-4">لوحة الموظف - أهلا {user.name}</h1>
       <select value={selectedLocation} onChange={e=>setSelectedLocation(e.target.value)} className="border p-2 m-1">
         <option value="">اختر الموقع</option>
         {locations.map(l=><option key={l.id} value={l.id}>{l.name}</option>)}
       </select>
       <button onClick={handleCheckIn} className="bg-green-500 text-white p-2 m-1 rounded">تسجيل حضور</button>
+      <button onClick={handleCheckOut} className="bg-red-500 text-white p-2 m-1 rounded">تسجيل انصراف</button>
     </div>
   )
 }
